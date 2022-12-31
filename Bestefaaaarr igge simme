@@ -1,0 +1,43 @@
+/*
+ * TWI_test.c
+ *
+ * Created: 2022-11-16 13:16:18
+ * Author : denan251
+ */ 
+
+#include <avr/io.h>
+#include <avr/interrupt.h>
+
+#define CPUFrequency 20000000							//20MHz
+#define TWIFrequency 50000
+
+
+void TWI_INIT(uint8_t address)
+{
+	cli();
+	
+	TWSR = 0x00;											//Set pre-scaler  (no pre-scaling)
+	TWBR = ((CPUFrequency / TWIFrequency) - 16) / 2;		//Set bit rate
+	TWCR = (1 << TWIE) | (1 << TWEN);
+	
+	TWAR = (address << 1) | 0x01;
+	TWCR = 0xC5;
+	TWDR = 0xFF;
+
+	sei();
+	return;
+}
+
+
+
+int main(void)
+{
+	TWI_INIT(0x40);
+	
+	while(1)
+	{
+		TWDR = 0xFF;
+	}
+	
+}
+

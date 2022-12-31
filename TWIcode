@@ -1,0 +1,116 @@
+/*
+ * TWIcode.c
+ *
+ * Created: 14 Nov 2022 16:55:13
+ * Author : Burken
+ */ 
+
+#include <avr/io.h>
+#include <avr/interrupt.h>
+
+
+#define wait_for_completion while(!(TWCR &amp; (1 << TWINT)));
+
+void TWI_init(void)
+{
+	
+	/* Set SDA, SCL as input and activate pull-up */
+	DDRC = (0<<DDC0) | (0<<DDC1);
+	PORTC = (1<<DDC0) | (1<<DDC1);
+	/* Set register for clock generation */
+	TWBR = 65;							// Bit rate: 100 kHz for F_SCL=14.745 MhZ
+
+	TWSR = (0<<TWPS1) | (0<<TWPS0);		// Setting prescalar bits 00 = 4^0 = 0
+	// SCL freq= F_CPU/(16 + 2*(TWBR)*4^TWPS)
+	/* Set address for slave */
+	TWAR = 0b00001110; // address 14
+	/* Enable TWI and Interrupts. */
+	TWCR = (1<<TWEN) | (1<<TWIE);
+	
+}
+void TWI_ACK(void) 
+//  It does this by taking the SDA line low or allowing it to return high. 
+//This is the acknowledge bit and is set to	 0 for ‘acknowledge’ (ACK) or 1 for ‘no acknowledge’ (NOT ACK). 
+//It’s up to your code how you handle this.
+{
+	TWCR = (0<<TWEA) | (1<<TWEN) | (1<<TWIE) | (1<<TWINT);
+}
+void clear_twint(void)
+{
+	TWCR = (1<<TWEN | (1<<TWIE) | (1<<TWINT));
+}
+/* Interrupt handler for I2C interrupts. */
+ISR(TWI_vect)
+{
+	uint8_t status = (TWSR & TW_NO_INFO);	// Get status code of incoming I2C interrupt.
+	switch ( status ) {
+
+		case TW_START:		// START condition has been transmitted.
+		TWDR = adr;						// Load address and write instruction to send.
+		clear_twint();					// Clear interrupt flag.
+		break;
+		
+		case TW_REP_START:		// Repeated START condition has been transmitted.
+		TWDR = adr;						// Load address and write instruction to send.
+		clear_twint();					// Clear interrupt flag.
+		break;
+
+		/* ====== WRITE ====== */
+		case TW_MT_SLA_ACK:			// SLA+W has been transmitted; ACK received.
+		TWDR = dp.id;					// Write id to slave.
+		transaction_state++;
+		clear_twint();					// Clear interrupt flag.
+		break;
+		
+		case TW_MT_SLA_NACK:			// SLA+W has been transmitted; NACK received.
+		stop();	// Slave didn't respond correctly. Drop the package and stop the transaction.
+		break;
+		
+		case TW_MT_DATA_ACK:			// Data byte has been transmitted; ACK received.
+		if(rw_mode == I2C_WRITE)
+		write_package();	// Write mode. Write data.
+		else
+		switch_read_mode();	// Id written, change to read mode to receive data.
+		break;
+		
+		case TW_MT_DATA_NACK:			// Data byte has been transmitted; NACK received.
+		stop(); // Slave didn't respond correctly. Abort.
+		break;
+		/* ==================== */
+		
+		/* ====== READ ====== */
+		case TW_MR_SLA_ACK:	// SLA+R has been transmitted; ACK received.
+		TWCR = (1<<TWEN) | (1<<TWIE) | (1<<TWINT) | (1<<TWEA);			// Data byte will be received and ACK will be returned.
+		break;
+		
+		case TW_MR_SLA_NACK:	// SLA+R has been transmitted; NACK received.
+		stop();		// Something went wrong, slave didn't responed. Abort.
+		break;
+		
+		case TW_MR_DATA_ACK:	// Data byte has been received, ACK returned.
+		recv_data = TWDR;	// Hdata received.
+		clear_twint();	// Data byte has been received, NACK returned.
+		break;
+		
+		case TW_MR_DATA_NACK:	// Data byte has been received; NACK received.
+		dp.data = (recv_data<<8) + TWDR;	// Ldata received.
+		if(dp.id == 8){
+			sty_recv_datap = dp;	// Complete package read.
+			styDataRead = 1;
+			} else {
+			com_recv_datap = dp;
+			comDataRead = 1;	// All data have been read.
+		}
+		stop();				// End transmission.
+		break;
+		/* ================== */
+	}
+}
+int main(void)
+{
+    TWI_init();
+    while (1) 
+    {
+    }
+}
+

@@ -1,0 +1,63 @@
+#define StartConv 0xC0									//11000000
+#define BreakWait 0x80									//10000000
+#define SelectADC0 0x21									//00100001
+#define SelectADC1 0x22									//00100010
+#define SelectADC2 0x24									//00100100
+#define SelectADC3 0x28									//00101000
+
+
+#define TW_SR_ADR_ACK 0x60 
+#define TW_MT_TO_MR 0x10 
+#define TW_ST_DATA_DONE 0xB8
+//Init for TWI
+void TWI_init(void)
+{
+	
+	/* Set SDA, SCL as input and activate pull-up */
+	DDRC = (0<<DDC0) | (0<<DDC1);
+	PORTC = (1<<DDC0) | (1<<DDC1);
+	/* Set register for clock generation */
+	TWBR = 65;							// Bit rate: 100 kHz for F_SCL=14.745 MhZ
+
+	TWSR = (0<<TWPS1) | (0<<TWPS0);		// Setting prescalar bits 00 = 4^0 = 0
+	// SCL freq= F_CPU/(16 + 2*(TWBR)*4^TWPS)
+	/* Set address for slave */
+	TWAR = 0b00001110; // address 14
+	/* Enable TWI and Interrupts. */
+	TWCR = (1<<TWEN) | (1<<TWIE) | (1<<TWEA);
+	
+}
+void TWI_ACK(void) 
+//  It does this by taking the SDA line low or allowing it to return high. 
+//This is the acknowledge bit and is set to	 0 for ‘acknowledge’ (ACK) or 1 for ‘no acknowledge’ (NOT ACK). 
+//It’s up to your code how you handle this.
+{
+	TWCR = (0<<TWEA) | (1<<TWEN) | (1<<TWIE) | (1<<TWINT);
+}
+void clear_twint(void)
+{
+	TWCR = (1<<TWEN | (1<<TWIE) | (1<<TWINT));
+}
+/* Interrupt handler for I2C interrupts. */
+ISR(TWI_vect)
+{
+	uint8_t status = (TWSR & TW_NO_INFO);	// Get status code of incoming I2C interrupt.
+	switch ( status ) 
+	{
+		
+		case TW_SR_ADR_ACK:
+			TWCR = (1<<TWINT) | (1<<TWEA);
+			break;
+		
+		case TW_MT_TO_MR:
+			TWCR = (0<<TWINT) | (1<<TWEA) | (0<<TWSTA) | (0<<TWSTO) | (0<<TWWC) | (1<<TWEN);
+			break;
+		
+		case TW_ST_DATA_DONE
+			TWCR = (1<<TWINT) | (1<<TWEA);
+			break;
+		
+
+	}
+}
+
